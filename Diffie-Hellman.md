@@ -342,3 +342,164 @@
 
 Постоянное и пристальное внимание к изменениям в законодательстве, технологическим трендам и киберугрозам позволит организации быть на шаг впереди злоумышленников и своевременно реагировать на уязвимости. В конечном счете, обеспечение безопасности информации - это непрерывный процесс, который требует координации между многими отделами организации и инвестиций во времени, обучении и технологиях.
 
+## Пример на Vue 3
+
+Реализовать полнофункциональный мессенджер с применением протокола Диффи-Хелльмана — это обширная задача, которая требует глубоких знаний в веб-разработке и криптографии. Ниже приведена упрощенная концепция, представляющая некоторые основные элементы такого приложения. Пример не является полностью рабочим решением, а больше направлен на демонстрацию концепций.
+
+Начнем с интерфейса Vue 3. Создадим простой компонент мессенджера:
+
+```vue
+<template>
+  <div class="messenger">
+    <div class="messenger-messages">
+      <div v-for="message in decryptedMessages" :key="message.id" class="message">
+        <span :class="{'message-incoming': !message.own, 'message-outgoing': message.own}">
+          {{ message.text }}
+        </span>
+      </div>
+    </div>
+
+    <input type="text" v-model="newMessage" @keyup.enter="sendMessage" />
+  </div>
+</template>
+
+<script setup>
+import { ref, computed, onMounted } from 'vue';
+import { generateKeyPair, encryptMessage, decryptMessage } from './crypto'; // Crypto helpers would be here
+
+// Sample message data
+const messages = ref([]);
+const newMessage = ref('');
+const decryptedMessages = computed(() => messages.value.map(decryptMessage));
+
+// Simulate fetching of the partner's public key and generating our key pair
+// In a real application, you would fetch and exchange these keys over a secure channel
+let ourKeys, theirPublicKey;
+
+// Fetch messages, decrypt them (placeholder function calls)
+onMounted(async () => {
+  // This would be where you get messages from the backend/server and decrypt them
+  // For now, let's generate our keys
+  ourKeys = await generateKeyPair();
+  theirPublicKey = await generateKeyPair().then(keys => keys.publicKey); // In reality, this would come from the server
+});
+
+// Send a new message
+function sendMessage() {
+  if (!newMessage.value) return;
+  
+  const encrypted = encryptMessage(newMessage.value, ourKeys.privateKey, theirPublicKey);
+  messages.value.push({ 
+    id: messages.value.length, 
+    text: encrypted, 
+    own: true 
+  });
+
+  // Clear the input field after sending the message
+  newMessage.value = '';
+}
+
+// Crypto helper imports are assumed to handle the Diffie-Hellman process 
+// and the encryption/decryption process using the derived keys
+</script>
+
+<style scoped>
+.messenger-messages {
+  max-height: 300px;
+  overflow-y: auto;
+}
+
+.message {
+  padding: 5px 10px;
+}
+
+.message-incoming {
+  text-align: left;
+}
+
+.message-outgoing {
+  text-align: right;
+}
+</style>
+```
+И создадим файл `crypto.js`, где определим функции для управления криптографическими операциями:
+
+```javascript
+// Импорт Web Cryptography API (Полифилл может потребоваться для полной совместимости)
+// Для примера используются методы SubtleCrypto от Web Cryptography API
+
+export async function generateKeyPair() {
+  // Эта функция будет генерировать и возвращать ключевую пару Диффи-Хелльмана
+  // В реальном приложении вы бы также выгружали публичные ключи на сервер
+  // и получали бы публичные ключи других участников чата
+
+  // Параметры для ECDH, не все браузеры поддерживают 'P-256'
+  const options = {
+    name: "ECDH",
+    namedCurve: "P-256"
+  };
+
+  return window.crypto.subtle.generateKey(
+    options,
+    true, // экспортируемый ключ
+    ["deriveKey"]
+  );
+}
+
+// Функция вычисления общего секрета, которая послужит основой для ключа шифрования
+async function deriveSecretKey(privateKey, publicKey) {
+  const algorithm = { name: 'ECDH', public: publicKey };
+  const derivedKeyAlgorithm = { name: 'AES-GCM', length: 256 };
+    
+  return window.crypto.subtle.deriveKey(
+    algorithm,
+    privateKey,
+    derivedKeyAlgorithm,
+    false,
+    ['encrypt', 'decrypt']
+  );
+}
+
+export async function encryptMessage(message, privateKey, publicKey) {
+  const secretKey = await deriveSecretKey(privateKey, publicKey);
+  const encodedMessage = new TextEncoder().encode(message);
+  const iv = window.crypto.getRandomValues(new Uint8Array(16)); // Инициализирующий вектор нужно будет передавать вместе с сообщением
+
+  const encrypted = await window.crypto.subtle.encrypt(
+    { name: 'AES-GCM', iv: iv },
+    secretKey,
+    encodedMessage
+  );
+
+  return { encrypted: new Uint8Array(encrypted), iv: iv };
+}
+
+export async function decryptMessage(encodedMessage, privateKey, publicKey) {
+  const { encrypted, iv } = encodedMessage;
+  const secretKey = await deriveSecretKey(privateKey, publicKey);
+
+  try {
+    const decrypted = await window.crypto.subtle.decrypt(
+      { name: 'AES-GCM', iv: iv },
+      secretKey,
+      encrypted
+    );
+    return new TextDecoder().decode(new Uint8Array(decrypted));
+  } catch (e) {
+    console.error('Ошибка дешифрования: ', e);
+    return null;
+  }
+}
+```
+
+Примечательно, что для полноценной функциональности нужно решить целый ряд вопросов, включая следующее:
+
+- *Эффективная и безопасная передача публичных ключей и инициализирующих векторов (IV) между пользователями.*
+- *Корректное управление и хранение приватных ключей.*
+- *Репликация сообщений и управление состояниями в распределенной системе.*
+- *Аутентификация пользователей и связь между идентитетами и ключами.*
+- *Обработка ошибок, особенно в криптографических операциях.*
+- *Возможность обновления и отзыва ключей пользователя.*
+- *Организация безопасной инфраструктуры backend, которая будет обрабатывать и передавать сообщения.*
+
+Таким образом, приведенный здесь код является лишь скелетом для более сложной системы, требующей доработки и тестирования перед использованием в реальных приложениях. Мы также предполагаем наличие надежного сервера для передачи сообщений и ключей между пользователями. Создание полноценного мессенджера — это большой проект, который включает в себя множество проблем как проектирования и программирования, так и обеспечения безопасности.
